@@ -153,7 +153,7 @@ namespace Concentus
         /// <param name="C"></param>
         /// <param name="lsb_depth"></param>
         /// <param name="downmix"></param>
-        internal static void tonality_analysis<T>(TonalityAnalysisState tonal, CeltMode celt_mode, T[] x, int x_ptr, int len, int offset, int c1, int c2, int C, int lsb_depth, Downmix.downmix_func<T> downmix)
+        internal static void tonality_analysis<T>(TonalityAnalysisState tonal, CeltMode celt_mode, ReadOnlySpan<T> x, int len, int offset, int c1, int c2, int C, int lsb_depth, Downmix.downmix_func<T> downmix)
         {
             int i, b;
             FFTState kfft;
@@ -198,7 +198,7 @@ namespace Concentus
             if (tonal.count == 0)
                 tonal.mem_fill = 240;
 
-            downmix(x, x_ptr, tonal.inmem, tonal.mem_fill, Inlines.IMIN(len, OpusConstants.ANALYSIS_BUF_SIZE - tonal.mem_fill), offset, c1, c2, C);
+            downmix(x, tonal.inmem, tonal.mem_fill, Inlines.IMIN(len, OpusConstants.ANALYSIS_BUF_SIZE - tonal.mem_fill), offset, c1, c2, C);
 
             if (tonal.mem_fill + len < OpusConstants.ANALYSIS_BUF_SIZE)
             {
@@ -226,7 +226,7 @@ namespace Concentus
             Arrays.MemMoveInt(tonal.inmem, OpusConstants.ANALYSIS_BUF_SIZE - 240, 0, 240);
 
             remaining = len - (OpusConstants.ANALYSIS_BUF_SIZE - tonal.mem_fill);
-            downmix(x, x_ptr, tonal.inmem, 240, remaining, offset + OpusConstants.ANALYSIS_BUF_SIZE - tonal.mem_fill, c1, c2, C);
+            downmix(x, tonal.inmem, 240, remaining, offset + OpusConstants.ANALYSIS_BUF_SIZE - tonal.mem_fill, c1, c2, C);
             tonal.mem_fill = 240 + remaining;
 
             KissFFT.opus_fft(kfft, input, output);
@@ -433,7 +433,7 @@ namespace Concentus
             features[23] = info.tonality_slope;
             features[24] = tonal.lowECount;
             
-            mlp.mlp_process(Tables.net, features, frame_probs);
+            MultiLayerPerceptron.mlp_process(Tables.net, features, frame_probs);
             frame_probs[0] = .5f * (frame_probs[0] + 1);
             /* Curve fitting between the MLP probability and the actual probability */
             frame_probs[0] = .01f + 1.21f * frame_probs[0] * frame_probs[0] - .23f * (float)Math.Pow(frame_probs[0], 10);
@@ -558,14 +558,14 @@ namespace Concentus
             info.valid = 1;
         }
 
-        internal static void run_analysis<T>(TonalityAnalysisState analysis, CeltMode celt_mode, T[] analysis_pcm, int analysis_pcm_ptr,
+        internal static void run_analysis<T>(TonalityAnalysisState analysis, CeltMode celt_mode, ReadOnlySpan<T> analysis_pcm,
                          int analysis_frame_size, int frame_size, int c1, int c2, int C, int Fs,
                          int lsb_depth, Downmix.downmix_func<T> downmix, AnalysisInfo analysis_info)
         {
             int offset;
             int pcm_len;
 
-            if (analysis_pcm != null)
+            if (!analysis_pcm.IsEmpty)
             {
                 /* Avoid overflow/wrap-around of the analysis buffer */
                 analysis_frame_size = Inlines.IMIN((OpusConstants.DETECT_SIZE - 5) * Fs / 100, analysis_frame_size);
@@ -574,7 +574,7 @@ namespace Concentus
                 offset = analysis.analysis_offset;
                 do
                 {
-                    tonality_analysis(analysis, celt_mode, analysis_pcm, analysis_pcm_ptr, Inlines.IMIN(480, pcm_len), offset, c1, c2, C, lsb_depth, downmix);
+                    tonality_analysis(analysis, celt_mode, analysis_pcm, Inlines.IMIN(480, pcm_len), offset, c1, c2, C, lsb_depth, downmix);
                     offset += 480;
                     pcm_len -= 480;
                 } while (pcm_len > 0);
